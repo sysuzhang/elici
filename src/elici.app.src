@@ -1,0 +1,12 @@
+{application, elici,
+ [
+	 {description, ""},
+	 {vsn, "1"},
+	 {registered, []},
+	 {applications, [
+		 kernel,
+		 stdlib
+	 ]},
+	 {mod, {elici, []}},
+	 {env, []}
+ ]}.

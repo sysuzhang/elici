@@ -1,0 +1,22 @@
+ Lookahead Tokens
+
+The Bison parser does not always reduce immediately as soon as the last n tokens and groupings match a rule. This is because such a simple strategy is inadequate to handle most languages. Instead, when a reduction is possible, the parser sometimes “looks ahead” at the next token in order to decide what to do.
+
+When a token is read, it is not immediately shifted; first it becomes the lookahead token, which is not on the stack. Now the parser can perform one or more reductions of tokens and groupings on the stack, while the lookahead token remains off to the side. When no more reductions should take place, the lookahead token is shifted onto the stack. This does not mean that all possible reductions have been done; depending on the token type of the lookahead token, some rules may choose to delay their application.
+
+Here is a simple case where lookahead is needed. These three rules define expressions which contain binary addition operators and postfix unary factorial operators (‘!’), and allow parentheses for grouping.
+
+expr:
+  term '+' expr
+| term
+;
+term:
+  '(' expr ')'
+| term '!'
+| "number"
+;
+Suppose that the tokens ‘1 + 2’ have been read and shifted; what should be done? If the following token is ‘)’, then the first three tokens must be reduced to form an expr. This is the only valid course, because shifting the ‘)’ would produce a sequence of symbols term ')', and no rule allows this.
+
+If the following token is ‘!’, then it must be shifted immediately so that ‘2 !’ can be reduced to make a term. If instead the parser were to reduce before shifting, ‘1 + 2’ would become an expr. It would then be impossible to shift the ‘!’ because doing so would produce on the stack the sequence of symbols expr '!'. No rule allows that sequence.
+
+The lookahead token is stored in the variable yychar. Its semantic value and location, if any, are stored in the variables yylval and yylloc. See Special Features for Use in Actions.

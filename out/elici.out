@@ -1,0 +1,58 @@
+%%%-------------------------------------------------------------------
+%%% @author Rongjie
+%%% @copyright (C) 2015, <Alibaba>
+%%% @doc
+%%%    代码模板
+%%%
+%%% @end
+%%% Created : 14. 八月 2015 16:37
+%%%-------------------------------------------------------------------
+-module(script_test).
+-author("Rongjie").
+
+-compile(export_all).
+script_execute(ScriptId) ->
+	script_execute(ScriptId, 0, []).
+script_execute(ScriptId, Args) ->
+	script_execute(ScriptId, 0, Args).
+
+
+%%普通攻击
+script_execute(301110, 0, [SkillInfo,TargetKey,Pos]) ->
+    SkillID1=get_skill_id(SkillInfo),
+    case can_apply_skill(SkillID1,TargetKey) of 
+        true -> 
+            notify_obj_effect(get_effect_id(SkillID1)),
+            TargetPos1=get_current_pos(TargetKey),
+            Scope1=make_box(Pos,200,150),
+            Targetlist1=find_target(Scope1),
+            Fun0 = fun() -> 
+                attack_target(SkillID1,Targetlist1)
+            end,
+            wait(300, Fun0);
+        _ -> 
+            error(check_skill_fail)
+    end    ;
+
+%%普通攻击
+script_execute(301120, 0, [SkillInfo,TargetKey,Pos]) ->
+    SkillID2=get_skill_id(SkillInfo),
+    case can_apply_skill(SkillID2,TargetKey) of 
+        true -> 
+            notify_obj_effect(get_effect_id(SkillID2)),
+            TargetPos1=get_current_pos(TargetKey),
+            Scope1=make_box(Pos,200,150),
+            Targetlist1=find_target(Scope1),
+            Fun0 = fun() -> 
+                attack_target(SkillID2,Targetlist1)
+            end,
+            wait(300, Fun0);
+        _ -> 
+            error(check_skill_fail)
+    end    ;
+%%{{body}}%%
+
+script_execute(ScriptId, FunId, Args) ->
+	exit({xscript_error, ScriptId, FunId, Args}).
+
+%%{{local_function}}%%

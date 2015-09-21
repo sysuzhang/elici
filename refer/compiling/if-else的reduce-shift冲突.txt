@@ -1,0 +1,152 @@
+ 众所周知，语法分析的文法有两种，LL文法和LR文法，LL文法中最通用的是
+LL（1）文法，LR中最通用的是LALR文法，分别适用于自顶向下和自底向上的
+语法分析。LL（1）文法的话，一目了然，就是先取一个token，看能用哪个产生式
+来产生当前的非终结符，只要你看得出，语法分析器绝对看得出。你要看不出，
+语法分析器也绝对看不出。而LALR分析的话，就很复杂了。自底向上的规约，
+加上大量的产生式（这个是全局的，不像LL就在一个非终结符里搞）。最关键的
+是，LALR不是LR（0），也不是LR（1），它不会对每个产生式都看看允许的后
+缀有哪些，也不会完全不看。至今我仍搞不清楚，LALR是对每个非终结符有一个
+后缀列表呢，还是更细些？（所以我的LALR分析器总会给我带来惊喜）
+
+   不清楚不要紧，你的语法分析器清楚，它弄不懂了就会报错。所以真正关键的
+问题在于你会改错。本文的作者就遇到这样的情况，那是一个经典的if-else的
+reduce－shift冲突（其经典之处就在于只要你实现一种语言，几乎必有if-else，于
+是必有此冲突）。我们先不去管它，要会修改冲突，就要先了解冲突的起源。我
+们就从此开始。
+
+       自底向上语法分析器的工作原理是这样的：它从外界（词法分析器）取得一个
+token，把它压入符号栈，然后看匹配哪些产生式。一些产生式会说，好，这个
+token就在我的产生式路径上，就保持这样shift好了。另一些产生式更绝，这个
+token不但在它的产生式路径上，更恰好是它的最后一个匹配项，它要求把符号
+栈里匹配它产生式右边的符号全部出栈，并把其左边的非终结符入栈，然后循环
+匹配下去。如果没有一个产生式说这个token在它的产生式路径上，那么不好意思，
+被分析的程序出错了。我们用伪代码的方式来表示这一过程。
+      input(Symbol token)
+{
+      push_stack(token);
+      if(no_production_agree_this())
+           error("not match one production");
+      production=production_reduced();
+      if(production!=0){
+          pop_stack(production.right);
+          input(production.left);
+      }
+}
+
+    事实上，这只是LR（0）语法分析器的工作方式。如果同时出现两个production
+都能reduce，或者一个要reduce一个要shift的情况，那就是出现冲突了，LR（0）
+文法所不能胜任也。LALR语法分析器比LR（0）聪明，何以见得？LALR分析器在
+有产生式要规约的时候，不会立即进行，而是再从外面取一个token。跟要规约的
+产生式的左端非终结符的后缀比较。如果token属于其后缀列表，表示可以规约到
+这个非终结符。如果token不属于其后缀列表，表示这个非终结符后面不能跟这个
+token，你规约到它，不是找错吗？于是被否决了。很多的LR（0）冲突就是这样
+被消除的。如果是reduce-reduce冲突，就看下一个token在哪个非终结符的后缀
+列表里，就用哪个非终结符所在的产生式进行规约。如果是reduce-shift冲突，就
+看token是否在要规约的非终结符的后缀列表里，如果不在，就shift，如果在，就
+仍是一个冲突。
+   一般来说，shift－reduce的冲突并不多，更常见的是reduce-reduce的冲突。因为
+token一般都是先被reduce到非终结符，然后才参与shift的。但if-else冲突是一个
+特例，我们就来具体看一下它。
+
+    statement          ::=
+                              IF LPAREN expression RPAREN statement ELSE statement
+                   |          IF LPAREN expression RPAREN statement
+                   |          other
+                   ;
+
+    上面这个例子就是if-else冲突。当语法分析器匹配到IF LPAREN expression
+RPAREN statement后，如果下一个token是ELSE，它就遇到一个reduce－shift
+冲突。第一个产生式想它shift下去，而第二个式子则希望能reduce，正好ELSE
+被证明在statement的后缀中（第一个式子中的RPAREN statement ELSE).
+即使实际用不到这种情况（不用else），语法分析器也会强制考虑这一
+问题，毕竟它要生成表的。语法分析和词法分析的不同就在于，词法分析总会试图
+寻找最长的匹配，而语法分析不会，所以你不要指望语法分析器会最长匹配到
+ELSE后面去。如果你够走运，你的语法分析器会返回一个警告，并默认采用shift
+的方式。但大多数语法分析器不会纵容你的。
+    我们看它的症结所在。statement太贪婪了，又想有没有ELSE的情况，又想有
+ELSE的情况。而且又不清楚这个ELSE是现在匹配，还是留给上级。我们当然想
+就近匹配，于是作出如下规定：一个if语句不能shift进ELSE，除非它的内层statement已经有了ELSE。很容易把它改成如下式子：
+
+     statement       ::=
+                            IF LPAREN  expression RPAREN statement1 ELSE statement
+                    |       IF LPAREN  expression RPAREN statement2
+                    |       other
+                    ;
+   其中statement1代表内层已经有ELSE的情况，而statement2代表内层没有ELSE
+的情况。
+
+   statement1        ::=
+                             IF LPAREN  expression RPAREN statement1 ELSE statement
+                   |         other
+                   ;
+   statement2         ::=
+                             IF LPAREN  expression RPAREN  statement2
+                   |         other
+                   ;
+
+    我们不能说if语句中不允许包含除if之外的语句，所以other在statement1和
+statement2中都有出现。但并不是说外层没有ELSE，内层就不允许有ELSE，
+所以statement2还要继续修改。
+
+    statement2      ::=
+                            IF LPAREN  expression RPAREN  statement1 ELSE statement
+                   |        IF LPAREN  expression RPAREN  statement2
+                   |         other
+                   ;
+
+    这样竟发现statement2和statement完全相同，想想也是，statement代表了
+一个独立的语句，又怎会允许ELSE跟在其后。而if中内嵌的后面跟ELSE的语句
+已经被独立出来，变成statement1了。这样整个文法就是：
+     statement       ::=
+                            IF LPAREN  expression RPAREN statement1 ELSE statement
+                    |       IF LPAREN  expression RPAREN statement
+                    |       other
+                    ;
+
+    statement1        ::=
+                             IF LPAREN  expression RPAREN statement1 ELSE statement
+                   |         other
+                   ;
+    后面可跟else的情况，就去找statement1好了。虽然形式上独立了，但是我们还
+是很担心规约的情况，万一该规约到statement的规约到statement1去了，岂不是
+变成了reduce-reduce冲突。这个不必担心，为了严格区分statement和statement1
+的规约，我们保证：statement1的后缀只能是ELSE，而statement的后缀中绝对
+没有ELSE。LALR分析器只需看一下，就明白该规约到谁了。这下高枕无忧了。
+
+   别忙，事实是残酷的，LALR分析器说不行，statement1:== IF LPAREN  expression RPAREN statement1 ELSE statement 永远规约不到。为什么？
+很简单，statement后缀中不可能有ELSE，statement1后缀只有ELSE。如果上面
+的产生式中最后的statement规约了，那后缀不是ELSE，则statement1不会规约。
+反之则statement不可能规约。所以要改一下。
+   statement       ::=
+                            IF LPAREN  expression RPAREN statement1 ELSE statement
+                    |       IF LPAREN  expression RPAREN statement
+                    |       other
+                    ;
+
+    statement1        ::=
+                           IF LPAREN  expression RPAREN statement1 ELSE statement1
+                   |         other
+                   ;
+
+  不要小看这个1（statement1），太重要了。是不是这样就行了，当然不。这取决
+于other的情况，statement已经跟ELSE彻底决裂了，如果other中有以statement
+结尾的，也要把它们分拆，并写到statement和statement1中。比如
+     other            ::=
+                        WHILE  LPAREN expression RPAREN statement
+                 ;
+
+  整个文法就要改成：
+
+      statement       ::=
+                            IF LPAREN  expression RPAREN statement1 ELSE statement
+                    |       IF LPAREN  expression RPAREN statement
+                    |       WHILE  LPAREN expression RPAREN statement
+                    ;
+
+    statement1        ::=
+                           IF LPAREN  expression RPAREN statement1 ELSE statement1
+                   |       WHILE  LPAREN expression RPAREN statement1
+                   ;
+
+   这样的statement和statement1规约清晰，绝对分得清。再有错误，就要考虑换
+一个LALR的分析器了，哈哈！
